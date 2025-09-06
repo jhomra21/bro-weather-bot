@@ -22,17 +22,11 @@
             "experimental_remote": true
 		}
 	],
-	// Email Routing binding. Ensure Email Routing is enabled in your account.
-	"send_email": [
-		{
-			"name": "EMAIL",
-            "experimental_remote": true
-		}
-	],
 	// Optional plain vars; prefer setting these as secrets in production.
 	"vars": {
 		"SENDER": "customers@fastaiphotos.com", // e.g. your-verified@your-domain.tld
-		"RECIPIENT": "jhonra121@gmail.com" // where to send notifications
+		"RECIPIENT": "jhonra121@gmail.com", // where to send notifications
+		"BASE_URL": "https://bro-weather-bot.jhonra121.workers.dev" // absolute unsubscribe links in production
 		// For SMTP (worker-mailer), set these as secrets in production:
 		// "SMTP_HOST": "smtp.example.com",
 		// "SMTP_PORT": "587",

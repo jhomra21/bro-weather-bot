@@ -1,0 +1,23 @@
+{
+  "name": "bro-weather-bot",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "wrangler dev --x-remote-bindings",
+    "dev": "wrangler dev --x-remote-bindings",
+    "generate-types": "wrangler types",
+    "type-check": "generate-types && tsc"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "hono": "^4.9.6",
+    "worker-mailer": "^1.1.5",
+    "wrangler": "^4.34.0"
+  }
+}

@@ -1,0 +1,44 @@
+{
+	"name": "bro-weather-bot",
+	"main": "index.ts",
+	"compatibility_date": "2025-08-20",
+    "compatibility_flags": ["nodejs_compat"],
+	"observability": {
+		"enabled": true
+	},
+	// Run hourly
+	"triggers": {
+		"crons": [
+			"0 * * * *"
+		]
+	},
+	// Local dev will auto-stub this; for prod, run:
+	//   wrangler kv namespace create BRO_KV
+	// then paste the id below under "id"
+	"kv_namespaces": [
+		{
+			"binding": "BRO_KV",
+			"id": "1f494d4e6e0f4185b14446b6eaa7ec23",
+            "experimental_remote": true
+		}
+	],
+	// Email Routing binding. Ensure Email Routing is enabled in your account.
+	"send_email": [
+		{
+			"name": "EMAIL",
+            "experimental_remote": true
+		}
+	],
+	// Optional plain vars; prefer setting these as secrets in production.
+	"vars": {
+		"SENDER": "customers@fastaiphotos.com", // e.g. your-verified@your-domain.tld
+		"RECIPIENT": "jhonra121@gmail.com" // where to send notifications
+		// For SMTP (worker-mailer), set these as secrets in production:
+		// "SMTP_HOST": "smtp.example.com",
+		// "SMTP_PORT": "587",
+		// "SMTP_USERNAME": "user@example.com",
+		// "SMTP_PASSWORD": "your-password",
+		// "SMTP_SECURE": "false", // true for port 465
+		// "SMTP_STARTTLS": "true"
+	}
+}

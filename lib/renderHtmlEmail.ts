@@ -37,12 +37,12 @@ export function renderHtmlEmail(text: string): string {
 
   function buildPrelimTable(rows: Array<[string,string,string,string,string,string,string,string,string]>): string {
     const wrapperStyle = 'overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0 18px 0;';
-    const tableStyle = 'width:100%;max-width:100%;min-width:560px;border:1px solid #2a3546;border-radius:6px;border-collapse:separate;border-spacing:0;background:transparent;table-layout:auto;';
-    const rowSep = 'border-top:1px solid #263244;';
+    const tableStyle = 'width:100%;max-width:100%;min-width:560px;border:1px solid #e5e7eb;border-radius:6px;border-collapse:separate;border-spacing:0;background:transparent;table-layout:auto;';
+    const rowSep = 'border-top:1px solid #e5e7eb;';
     const nameTd = 'padding:8px 12px;text-align:left;white-space:nowrap;word-break:keep-all;overflow-wrap:normal;font-weight:600;min-width:10ch;width:35%;';
     const numTd = 'padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;width:3ch;min-width:3ch;';
     const slashTd = 'padding:8px 8px;color:#9ca3af;text-align:center;width:1ch;min-width:1ch;';
-    const thBase = 'padding:6px 10px;border-bottom:1px solid #2a3546;color:#cbd5e1;font-weight:600;white-space:nowrap;';
+    const thBase = 'padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-weight:700;white-space:nowrap;';
     let out = `<div style="${wrapperStyle}"><table role="presentation" cellpadding="0" cellspacing="0" style="${tableStyle}">`;
     out += '<thead><tr>' +
       `<th style="${thBase} text-align:left;">City</th>` +
@@ -53,7 +53,7 @@ export function renderHtmlEmail(text: string): string {
     rows.forEach((r, idx) => {
       const [city, t1, t2, t3, t4, p1, p2, p3, p4] = r;
       const trStyle = idx === 0 ? '' : rowSep;
-      const zebra = idx % 2 === 1 ? 'background:rgba(255,255,255,0.02);' : '';
+      const zebra = idx % 2 === 1 ? 'background:rgba(0,0,0,0.03);' : '';
       out += `<tr style="${trStyle}${zebra}">` +
         `<td style="${nameTd}">${escapeHtml(city)}</td>` +
         `<td style="${numTd}">${t1}</td>` +
@@ -84,7 +84,7 @@ export function renderHtmlEmail(text: string): string {
     });
     // Insert a subtle separator before headers or '&&' separators (but not at very top)
     if (i > 0 && (isSectionHeader(line) || isAmpSeparator(line)) && !prevWasSeparator) {
-      html += '<div style="margin:10px 0 6px 0;border-top:1px solid #2a3546;"></div>';
+      html += '<div style="margin:10px 0 6px 0;border-top:1px solid #e5e7eb;"></div>';
       prevWasSeparator = true;
     }
     // If it's a bare '&&' separator, do not render the line text itself
@@ -96,7 +96,7 @@ export function renderHtmlEmail(text: string): string {
     if (isPrelimHeader(line)) {
       // Render the header line with emphasis
       const headerContent = (escapeHtml(line).length === 0 ? '&nbsp;' : escapeHtml(line));
-      html += '<div style="white-space:pre-wrap;word-break:normal;overflow-wrap:normal;color:#cbd5e1;font-weight:600;">' + headerContent + '</div>';
+      html += '<div style="white-space:pre-wrap;word-break:normal;overflow-wrap:normal;color:#0f172a;font-weight:700;">' + headerContent + '</div>';
       // Collect following rows until blank line, next header, or separator
       const rows: Array<[string,string,string,string,string,string,string,string,string]> = [];
       let j = i + 1;
@@ -125,21 +125,22 @@ export function renderHtmlEmail(text: string): string {
     // Render each original line as its own block; preserve spaces and allow wrapping
     const content = esc.length === 0 ? "&nbsp;" : esc;
     const baseStyle = 'white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;';
-    const headerExtra = isSectionHeader(line) ? 'color:#cbd5e1;font-weight:600;' : '';
+    const headerExtra = isSectionHeader(line) ? 'color:#0f172a;font-weight:700!important;' : '';
     html += '<div style="' + baseStyle + headerExtra + '">' + content + "</div>";
     prevWasSeparator = false;
   }
 
   return (
     "<!doctype html>" +
-    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><style>html,body{margin:0!important;padding:0!important;width:100%!important;min-width:100%!important;background:#111111!important}table{border-collapse:collapse!important}</style></head>' +
-    '<body style="margin:0;padding:0 4px;font-size:16px;line-height:1.5;">' +
-      '<div style="width:100vw;min-width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);background:#111111;">' +
-      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#111111;color:#ffffff;margin:0;padding:0;border-collapse:collapse;table-layout:fixed;width:100%!important;min-width:100%!important;max-width:100%!important;">' +
-        '<tr><td align="left" style="padding:0;">' +
-          '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed;width:100%!important;min-width:100%!important;max-width:100%!important;margin:0;"><tr><td>' +
+    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><style>html,body{margin:0!important;padding:0!important;width:100%!important;min-width:100%!important;background:#fafafa!important;color:#111111!important}table{border-collapse:collapse!important}@media (prefers-color-scheme: dark){ html,body{ background:#fafafa!important; color:#111111!important } }</style></head>' +
+    '<body bgcolor="#fafafa" style="margin:0;padding:0;padding-inline:8px!important;font-size:16px;line-height:1.5;background:#fafafa!important;color:#111111!important;">' +
+      '<div style="width:100vw;min-width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);background:#fafafa;">' +
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#fafafa" style="background:#fafafa;color:#111111!important;margin:0;padding:0;border-collapse:collapse;table-layout:fixed;width:100%!important;min-width:100%!important;max-width:100%!important;">' +
+        '<tr><td align="left" bgcolor="#fafafa" style="padding:0;background:#fafafa;">' +
+          '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#fafafa" style="border-collapse:collapse;table-layout:fixed;width:100%!important;min-width:100%!important;max-width:100%!important;margin:0;background:#fafafa;">' +
+            '<tr><td bgcolor="#fafafa" style="background:#fafafa;">' +
             '<div style="font-family:\'Courier New\',Consolas,Menlo,\'Lucida Console\',monospace;' +
-              'font-variant-ligatures:none;tab-size:8;letter-spacing:0;font-size:16px;line-height:1.5;text-align:left;">' +
+              'font-variant-ligatures:none;tab-size:8;letter-spacing:0;font-size:18px!important;line-height:1.5;text-align:left;color:#111111!important;font-weight:500;">' +
               html +
             '</div>' +
           '</td></tr></table>' +

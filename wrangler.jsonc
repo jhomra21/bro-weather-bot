@@ -6,10 +6,11 @@
 	"observability": {
 		"enabled": true
 	},
-	// Run once a day
+	// Run once a day at 12:00 UTC (7:00 AM CT)
 	"triggers": {
 		"crons": [
-			"0 0 * * *"
+			"0 12 * * *"
+
 		]
 	},
 	// Local dev will auto-stub this; for prod, run:

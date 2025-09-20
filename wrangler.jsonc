@@ -10,6 +10,7 @@
 	"triggers": {
 		"crons": [
 			"0 12 * * *"
+
 		]
 	},
 	// Local dev will auto-stub this; for prod, run:

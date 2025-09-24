@@ -57,9 +57,7 @@ function renderEmailFormPage() {
               <a href="/">/</a> ·
               <a href="/check">/check</a> ·
               <a href="/check/raw">/check/raw</a> ·
-              <a href="/check/html">/check/html</a> ·
-              <a href="/subscribe">/subscribe</a> ·
-              <a href="/unsubscribe">/unsubscribe</a>
+              <a href="/check/html">/check/html</a>
             </div>
           </div>
         </div>

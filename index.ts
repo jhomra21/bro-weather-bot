@@ -362,6 +362,6 @@ export default {
     env: Env,
     ctx: ExecutionContext
   ) => {
-    ctx.waitUntil(checkAfdbro(env));
+    ctx.waitUntil(checkAfdbro(env, { send: true }));
   },
 };

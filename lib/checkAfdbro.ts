@@ -4,7 +4,7 @@ import { renderHtmlEmail } from "./renderHtmlEmail.ts";
 
 export async function checkAfdbro(
   env: Env,
-  opts?: { includeText?: boolean; baseUrlOverride?: string }
+  opts?: { includeText?: boolean; baseUrlOverride?: string; send?: boolean }
 ): Promise<{
   changed: boolean;
   hash?: string;
@@ -150,81 +150,83 @@ export async function checkAfdbro(
       }
     }
 
-    // Iterate subscribers and send to those behind
-    try {
-      let cursor: string | undefined = undefined;
-      do {
-        const listRes: any = await env.BRO_KV.list({ prefix: "SUBS:", cursor });
-        cursor = listRes.cursor;
-        for (const key of listRes.keys) {
-          try {
-            const subRaw = await env.BRO_KV.get(key.name);
-            if (!subRaw) continue;
-            const sub = JSON.parse(subRaw) as any;
-            if (sub.disabled) continue;
-            const email = String(sub.email || "").trim().toLowerCase();
-            if (!email || !email.includes("@") || email.length > 254) continue;
-            if (sub.lastSentHash === hash) continue; // already up to date
-            // Ensure unsubscribe token exists and map token -> subscriber key
-            if (!sub.unsubToken) {
-              sub.unsubToken = `u_${Math.random().toString(36).slice(2)}${Math.random()
-                .toString(36)
-                .slice(2)}`;
-              await env.BRO_KV.put(key.name, JSON.stringify(sub));
-              await env.BRO_KV.put(`UNSUB:${sub.unsubToken}`, key.name);
-            }
-            attemptedCount++;
+    // Iterate subscribers and send to those behind if changed and sending is enabled
+    if (changed && (opts?.send ?? false)) {
+      try {
+        let cursor: string | undefined = undefined;
+        do {
+          const listRes: any = await env.BRO_KV.list({ prefix: "SUBS:", cursor });
+          cursor = listRes.cursor;
+          for (const key of listRes.keys) {
+            try {
+              const subRaw = await env.BRO_KV.get(key.name);
+              if (!subRaw) continue;
+              const sub = JSON.parse(subRaw) as any;
+              if (sub.disabled) continue;
+              const email = String(sub.email || "").trim().toLowerCase();
+              if (!email || !email.includes("@") || email.length > 254) continue;
+              if (sub.lastSentHash === hash) continue; // already up to date
+              // Ensure unsubscribe token exists and map token -> subscriber key
+              if (!sub.unsubToken) {
+                sub.unsubToken = `u_${Math.random().toString(36).slice(2)}${Math.random()
+                  .toString(36)
+                  .slice(2)}`;
+                await env.BRO_KV.put(key.name, JSON.stringify(sub));
+                await env.BRO_KV.put(`UNSUB:${sub.unsubToken}`, key.name);
+              }
+              attemptedCount++;
 
-            if (!env.SENDER) {
-              sendError = sendError || "SENDER not configured.";
+              if (!env.SENDER) {
+                sendError = sendError || "SENDER not configured.";
+                continue;
+              }
+
+              let sent = false;
+              if (mailer) {
+                // Build per-subscriber bodies with unsubscribe link
+                const unsubUrl = `${base}/unsubscribe?token=${sub.unsubToken}`;
+                const textBody = clean + `\n\n—\nTo unsubscribe: ${unsubUrl}\n`;
+                const footerHtml =
+                  `<div style="margin-top:18px;padding-top:10px;border-top:1px solid #2a3546;color:#9ca3af;font-size:14px;">` +
+                  `This message was sent by bro-weather-bot. ` +
+                  `<a style="color:#cbd5e1;" href="${unsubUrl}">Unsubscribe</a>.` +
+                  `</div>`;
+                const htmlEmail = renderHtmlEmail(clean);
+                const htmlBody = withHtmlFooter(htmlEmail, footerHtml);
+                try {
+                  await mailer.send({
+                    from: env.SENDER,
+                    to: email,
+                    subject,
+                    text: textBody,
+                    html: htmlBody,
+                  });
+                  sent = true;
+                } catch (e: any) {
+                  const msg = String(e?.message ?? e);
+                  console.error("SMTP send failed:", msg);
+                  sendError = sendError || msg;
+                }
+              }
+
+              if (sent) {
+                notifiedCount++;
+                // Update subscriber state to the latest hash
+                sub.lastSentHash = hash;
+                sub.lastSentAt = new Date().toISOString();
+                await env.BRO_KV.put(key.name, JSON.stringify(sub));
+              }
+            } catch (e) {
+              // Skip malformed subscriber records
               continue;
             }
-
-            let sent = false;
-            if (mailer) {
-              // Build per-subscriber bodies with unsubscribe link
-              const unsubUrl = `${base}/unsubscribe?token=${sub.unsubToken}`;
-              const textBody = clean + `\n\n—\nTo unsubscribe: ${unsubUrl}\n`;
-              const footerHtml =
-                `<div style="margin-top:18px;padding-top:10px;border-top:1px solid #2a3546;color:#9ca3af;font-size:14px;">` +
-                `This message was sent by bro-weather-bot. ` +
-                `<a style="color:#cbd5e1;" href="${unsubUrl}">Unsubscribe</a>.` +
-                `</div>`;
-              const htmlEmail = renderHtmlEmail(clean);
-              const htmlBody = withHtmlFooter(htmlEmail, footerHtml);
-              try {
-                await mailer.send({
-                  from: env.SENDER,
-                  to: email,
-                  subject,
-                  text: textBody,
-                  html: htmlBody,
-                });
-                sent = true;
-              } catch (e: any) {
-                const msg = String(e?.message ?? e);
-                console.error("SMTP send failed:", msg);
-                sendError = sendError || msg;
-              }
-            }
-
-            if (sent) {
-              notifiedCount++;
-              // Update subscriber state to the latest hash
-              sub.lastSentHash = hash;
-              sub.lastSentAt = new Date().toISOString();
-              await env.BRO_KV.put(key.name, JSON.stringify(sub));
-            }
-          } catch (e) {
-            // Skip malformed subscriber records
-            continue;
           }
-        }
-      } while (cursor);
-    } catch (e: any) {
-      const msg = String(e?.message ?? e);
-      console.error("Subscriber iteration failed:", msg);
-      sendError = sendError || msg;
+        } while (cursor);
+      } catch (e: any) {
+        const msg = String(e?.message ?? e);
+        console.error("Subscriber iteration failed:", msg);
+        sendError = sendError || msg;
+      }
     }
 
     return {

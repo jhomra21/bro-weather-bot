@@ -71,7 +71,7 @@ export function renderHtmlEmail(text: string): string {
     days: Array<{ date: string; records: Record<string, string> }>,
     sites: string[]
   ): string {
-    const uiFont = "font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;";
+    const uiFont = "font-family:'Courier New',Consolas,Menlo,'Lucida Console',monospace;";
     const dateWidth = `${Math.max(10, Math.floor(70 / Math.max(1, days.length)))}%`;
     let out = `<div style="${uiFont}margin:16px 0 22px 0;color:#111827;">`;
 
@@ -178,7 +178,7 @@ export function renderHtmlEmail(text: string): string {
 
     const span = Math.max(1, scaleMax - scaleMin);
     const widthFor = (value: number) => Math.max(0, Math.min(100, ((value - scaleMin) / span) * 100));
-    const uiFont = "font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;";
+    const uiFont = "font-family:'Courier New',Consolas,Menlo,'Lucida Console',monospace;";
     let out = `<div style="${uiFont}margin:16px 0 20px 0;color:#111827;">`;
 
     out += '<div style="font-size:19px;line-height:1.25;font-weight:700;letter-spacing:-0.01em;margin-bottom:3px;">Point forecast</div>';

@@ -15,39 +15,43 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bun run generate-types
-      - run: bunx tsc --noEmit
+      - run: bun run generate-types && bunx tsc
       - name: Verify mobile weather hierarchy
         shell: bash
         run: |
           cat > validate-weather-email.ts <<'TS'
           import { renderHtmlEmail } from "./lib/renderHtmlEmail.ts";
 
-          const sample = `FXUS64 KBRO 311135 AAB
-AFDBRO
-Area Forecast Discussion...UPDATED
-National Weather Service Brownsville TX
-635 AM CDT Mon Aug 31 2026
+          const sample = `
+          FXUS64 KBRO 311135 AAB
+          AFDBRO
+          Area Forecast Discussion...UPDATED
+          National Weather Service Brownsville TX
+          635 AM CDT Mon Aug 31 2026
 
-.CLIMATE...
-Issued at 1036 PM CDT Sun Aug 30 2026
-Record High Temperatures from August 31st to September 4th:
-Monday, August 31, 2026
-Brownsville: 103F (2023)
-Harlingen: 104F (1958)
-McAllen: 104F (2023, 2017)
-Tuesday, September 1, 2026
-Brownsville: 100F (2023, 2020)
-Harlingen: 103F (1928, 1952)
-McAllen: 106F (2018)
+          .CLIMATE...
+          Issued at 1036 PM CDT Sun Aug 30 2026
 
-.PRELIMINARY POINT TEMPS/POPS...
-BROWNSVILLE 98 80 98 80 / 0 0 0 0
-HARLINGEN 102 76 102 76 / 0 0 0 0
-MCALLEN 104 80 104 81 / 0 0 0 0
+          Record High Temperatures from August 31st to September 4th:
 
-.BRO WATCHES/WARNINGS/ADVISORIES...
-TX...None.`;
+          Monday, August 31, 2026
+          Brownsville: 103F (2023)
+          Harlingen: 104F (1958)
+          McAllen: 104F (2023, 2017)
+
+          Tuesday, September 1, 2026
+          Brownsville: 100F (2023, 2020)
+          Harlingen: 103F (1928, 1952)
+          McAllen: 106F (2018)
+
+          .PRELIMINARY POINT TEMPS/POPS...
+          BROWNSVILLE 98 80 98 80 / 0 0 0 0
+          HARLINGEN 102 76 102 76 / 0 0 0 0
+          MCALLEN 104 80 104 81 / 0 0 0 0
+
+          .BRO WATCHES/WARNINGS/ADVISORIES...
+          TX...None.
+          `;
 
           const html = renderHtmlEmail(sample);
           const required = [

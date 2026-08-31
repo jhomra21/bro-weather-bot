@@ -77,7 +77,7 @@ export function renderHtmlEmail(text: string): string {
 
     out += '<div style="font-size:19px;line-height:1.25;font-weight:700;letter-spacing:-0.01em;margin-bottom:3px;">Record highs</div>';
     out += '<div style="font-size:13px;line-height:1.35;color:#6b7280;margin-bottom:10px;">Daily record high temperatures · °F</div>';
-    out += '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:100%;border:1px solid #e5e7eb;border-radius:12px;border-collapse:separate!important;border-spacing:0;background:#ffffff;table-layout:fixed;overflow:hidden;">';
+    out += '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:100%;border:0;border-collapse:separate!important;border-spacing:0;background:transparent;table-layout:fixed;">';
     out += '<thead><tr>';
     out += '<th style="width:30%;padding:9px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px;font-weight:600;">City</th>';
     out += days.map((day) => {
@@ -179,7 +179,7 @@ export function renderHtmlEmail(text: string): string {
     const span = Math.max(1, scaleMax - scaleMin);
     const widthFor = (value: number) => Math.max(0, Math.min(100, ((value - scaleMin) / span) * 100));
     const uiFont = "font-family:'Courier New',Consolas,Menlo,'Lucida Console',monospace;";
-    let out = `<div style="${uiFont}margin:16px 0 20px 0;color:#111827;">`;
+    let out = `<div style="${uiFont}margin:18px 0 20px 0;border-top:1px solid #e5e7eb;padding-top:16px;color:#111827;">`;
 
     out += '<div style="font-size:19px;line-height:1.25;font-weight:700;letter-spacing:-0.01em;margin-bottom:3px;">Point forecast</div>';
     out += '<div style="font-size:13px;line-height:1.35;color:#6b7280;margin-bottom:14px;">Daily low–high range and precipitation chance</div>';
@@ -266,7 +266,7 @@ export function renderHtmlEmail(text: string): string {
       return "&nbsp; ".repeat(pairs) + (rem ? "&nbsp;" : "");
     });
 
-    if (i > 0 && (isSectionHeader(line) || isAmpSeparator(line)) && !prevWasSeparator) {
+    if (i > 0 && ((isSectionHeader(line) && !isPrelimHeader(line)) || isAmpSeparator(line)) && !prevWasSeparator) {
       html += '<div style="margin:10px 0 6px 0;border-top:1px solid #e5e7eb;"></div>';
       prevWasSeparator = true;
     }

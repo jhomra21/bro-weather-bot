@@ -20,6 +20,12 @@ export function renderHtmlEmail(text: string): string {
     return /^\s*\.PRELIMINARY POINT TEMPS\/POPS/i.test(line);
   }
 
+  function formatSectionHeaderForDisplay(line: string): string {
+    const match = line.match(/^(\s*)\.([^.].*?)\.\.\.(\s*)$/);
+    if (!match) return line;
+    return `${match[1]}${match[2]!.toUpperCase()}${match[3]}`;
+  }
+
   function nextNonEmptyLineIndex(start: number): number | null {
     for (let index = start + 1; index < lines.length; index++) {
       if ((lines[index] ?? "").trim() !== "") return index;
@@ -266,7 +272,7 @@ export function renderHtmlEmail(text: string): string {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    const esc0 = escapeHtml(line);
+    const esc0 = escapeHtml(formatSectionHeaderForDisplay(line));
     const esc = esc0.replace(/ {2,}/g, (m) => {
       const pairs = Math.floor(m.length / 2);
       const rem = m.length % 2;

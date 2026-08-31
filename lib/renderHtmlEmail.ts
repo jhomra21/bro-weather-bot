@@ -61,6 +61,7 @@ export function renderHtmlEmail(text: string): string {
   }
 
   function titleCasePlace(value: string): string {
+    if (value.toUpperCase() === "MCALLEN") return "McAllen";
     return value.toLowerCase().replace(/(^|[\s/\-])([a-z])/g, (_, before: string, letter: string) => {
       return before + letter.toUpperCase();
     });
@@ -344,7 +345,7 @@ export function renderHtmlEmail(text: string): string {
 
   return (
     "<!doctype html>" +
-    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><style>html,body{margin:0!important;padding:0!important;width:100%!important;min-width:100%!important;background:#fafafa!important;color:#111111!important}table{border-collapse:collapse!important}a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font:inherit!important}#MessageViewBody a{color:inherit!important;text-decoration:none!important}@media (prefers-color-scheme: dark){html,body{background:#fafafa!important;color:#111111!important}}</style></head>' +
+    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><style>html,body{margin:0!important;padding:0!important;width:100%!important;min-width:100%!important;background:#fafafa!important;color:#111111!important}table{border-collapse:collapse!important}a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font:inherit!important}@media (prefers-color-scheme: dark){html,body{background:#fafafa!important;color:#111111!important}}</style></head>' +
     '<body bgcolor="#fafafa" style="margin:0;padding:0;padding-inline:8px!important;font-size:16px;line-height:1.5;background:#fafafa!important;color:#111111!important;">' +
       '<div style="width:100vw;min-width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);background:#fafafa;">' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#fafafa" style="background:#fafafa;color:#111111!important;margin:0;padding:0;border-collapse:collapse;table-layout:fixed;width:100%!important;min-width:100%!important;max-width:100%!important;">' +

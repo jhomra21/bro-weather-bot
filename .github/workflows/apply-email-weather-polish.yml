@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   apply:
-    if: github.event.head_commit.message != 'style: polish weather email hierarchy'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +18,11 @@ jobs:
       - name: Apply focused renderer changes
         shell: bash
         run: |
+          if [ "$(git log -1 --pretty=%s)" = "style: polish weather email hierarchy" ]; then
+            echo "Polish commit already applied"
+            exit 0
+          fi
+
           python3 <<'PY'
           from pathlib import Path
           p = Path('lib/renderHtmlEmail.ts')

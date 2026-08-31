@@ -1,26 +1,21 @@
 // Render HTML email to preserve each original line and insert minimal section separators
 export function renderHtmlEmail(text: string): string {
-  // Escape HTML entities
   function escapeHtml(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  // Convert tabs to 8 spaces for consistent alignment across email clients
   const normalized = text.replace(/\t/g, "        ");
   const lines = normalized.split("\n");
+
   function isAmpSeparator(line: string): boolean {
-    const t = line.trim();
-    // Treat any line consisting solely of 2+ ampersands as a separator
-    return /^&{2,}$/.test(t);
-  }
-  function isSectionHeader(line: string): boolean {
-    const t = line.trim();
-    if (t.startsWith("...")) return true; // e.g. ...NEW DISCUSSION
-    if (t.startsWith(".")) return true;   // e.g. .KEY MESSAGES...
-    return false;
+    return /^&{2,}$/.test(line.trim());
   }
 
-  // Detect the PRELIMINARY POINT TEMPS/POPS header line
+  function isSectionHeader(line: string): boolean {
+    const t = line.trim();
+    return t.startsWith("...") || t.startsWith(".");
+  }
+
   function isPrelimHeader(line: string): boolean {
     return /^\s*\.PRELIMINARY POINT TEMPS\/POPS/i.test(line);
   }
@@ -40,36 +35,68 @@ export function renderHtmlEmail(text: string): string {
     return [m[1]!.trim(), m[2]!.trim()];
   }
 
-  // Parse a Temps/POPS data row, return tuple or null if it doesn't match
   function parsePrelimRow(row: string): [string,string,string,string,string,string,string,string,string] | null {
     const m = row.match(/^\s*([A-Z0-9][A-Z0-9 ./'()\-]*?)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\/\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*$/i);
     if (!m) return null;
-    const city = m[1]!.trim();
-    const t1 = m[2]!; const t2 = m[3]!; const t3 = m[4]!; const t4 = m[5]!;
-    const p1 = m[6]!; const p2 = m[7]!; const p3 = m[8]!; const p4 = m[9]!;
-    return [city, t1, t2, t3, t4, p1, p2, p3, p4];
+    return [
+      m[1]!.trim(), m[2]!, m[3]!, m[4]!, m[5]!,
+      m[6]!, m[7]!, m[8]!, m[9]!,
+    ];
   }
 
-  function buildClimateRecordsTable(days: Array<{ date: string; records: Record<string, string> }>, sites: string[]): string {
-    const wrapperStyle = 'overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0 18px 0;';
-    const tableStyle = 'width:100%;max-width:100%;min-width:760px;border:1px solid #e5e7eb;border-radius:6px;border-collapse:separate;border-spacing:0;background:transparent;table-layout:auto;';
-    const rowSep = 'border-top:1px solid #e5e7eb;';
-    const thBase = 'padding:7px 10px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-weight:700;white-space:nowrap;text-align:right;';
-    const siteTd = 'padding:8px 12px;text-align:left;white-space:nowrap;font-weight:600;';
-    const valueTd = 'padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    let out = `<div style="${wrapperStyle}"><table role="presentation" cellpadding="0" cellspacing="0" style="${tableStyle}">`;
-    out += '<thead><tr>' +
-      `<th style="${thBase} text-align:left;">City</th>` +
-      days.map((day) => `<th style="${thBase}">${escapeHtml(day.date)}</th>`).join('') +
-    '</tr></thead>';
-    sites.forEach((site, idx) => {
-      const trStyle = idx === 0 ? '' : rowSep;
-      const zebra = idx % 2 === 1 ? 'background:rgba(0,0,0,0.03);' : '';
-      out += `<tr style="${trStyle}${zebra}">` +
-        `<td style="${siteTd}">${escapeHtml(site)}</td>` +
-        days.map((day) => `<td style="${valueTd}">${escapeHtml(day.records[site] ?? '—')}</td>`).join('') +
-      '</tr>';
+  function parseClimateRecordValue(value: string): { temperature: number; years: string[] } | null {
+    const m = value.match(/^(\d{2,3})F(?:\s+\(([^)]+)\))?$/i);
+    if (!m) return null;
+    const years = (m[2] ?? "").split(",").map((year) => year.trim()).filter(Boolean);
+    return { temperature: Number(m[1]), years };
+  }
+
+  function formatClimateTableDate(value: string): { weekday: string; date: string } {
+    const m = value.match(/^([A-Za-z]+),\s+([A-Za-z]+)\s+(\d{1,2}),\s+\d{4}$/);
+    if (!m) return { weekday: "", date: value };
+    return {
+      weekday: m[1]!.slice(0, 3),
+      date: `${m[2]!.slice(0, 3)} ${m[3]!}`,
+    };
+  }
+
+  function titleCasePlace(value: string): string {
+    return value.toLowerCase().replace(/(^|[\s/\-])([a-z])/g, (_, before: string, letter: string) => {
+      return before + letter.toUpperCase();
     });
+  }
+
+  function buildClimateRecordsTable(
+    days: Array<{ date: string; records: Record<string, string> }>,
+    sites: string[]
+  ): string {
+    const uiFont = "font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;";
+    const dateWidth = `${Math.max(10, Math.floor(70 / Math.max(1, days.length)))}%`;
+    let out = `<div style="${uiFont}margin:16px 0 22px 0;color:#111827;">`;
+
+    out += '<div style="font-size:19px;line-height:1.25;font-weight:700;letter-spacing:-0.01em;margin-bottom:3px;">Record highs</div>';
+    out += '<div style="font-size:13px;line-height:1.35;color:#6b7280;margin-bottom:10px;">Daily record high temperatures · °F</div>';
+    out += '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:100%;border:1px solid #e5e7eb;border-radius:12px;border-collapse:separate!important;border-spacing:0;background:#ffffff;table-layout:fixed;overflow:hidden;">';
+    out += '<thead><tr>';
+    out += '<th style="width:30%;padding:9px 8px;text-align:left;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px;font-weight:600;">City</th>';
+    out += days.map((day) => {
+      const label = formatClimateTableDate(day.date);
+      return `<th style="width:${dateWidth};padding:8px 2px;text-align:center;border-bottom:1px solid #e5e7eb;color:#6b7280;font-weight:500;line-height:1.15;white-space:nowrap;"><span style="display:block;font-size:11px;">${escapeHtml(label.weekday)}</span><span style="display:block;margin-top:2px;font-size:12px;color:#374151;font-weight:600;">${escapeHtml(label.date)}</span></th>`;
+    }).join("");
+    out += '</tr></thead>';
+
+    sites.forEach((site, idx) => {
+      const border = idx === 0 ? "" : "border-top:1px solid #f0f1f3;";
+      out += '<tr>';
+      out += `<td style="padding:10px 8px;text-align:left;${border}font-size:13px;font-weight:600;line-height:1.2;">${escapeHtml(titleCasePlace(site))}</td>`;
+      out += days.map((day) => {
+        const parsed = parseClimateRecordValue(day.records[site] ?? "");
+        const value = parsed ? `${parsed.temperature}°` : "—";
+        return `<td style="padding:10px 2px;text-align:center;${border}font-size:15px;font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap;">${escapeHtml(value)}</td>`;
+      }).join("");
+      out += '</tr>';
+    });
+
     out += '</table></div>';
     return out;
   }
@@ -79,6 +106,7 @@ export function renderHtmlEmail(text: string): string {
       Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
       Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
     };
+
     for (const line of lines) {
       const m = line.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{4})\b/);
       if (!m) continue;
@@ -86,6 +114,7 @@ export function renderHtmlEmail(text: string): string {
       if (month === undefined) continue;
       return new Date(Date.UTC(Number(m[3]), month, Number(m[2])));
     }
+
     return null;
   }
 
@@ -94,14 +123,14 @@ export function renderHtmlEmail(text: string): string {
   }
 
   function formatForecastDate(date: Date): string {
-    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${weekdays[date.getUTCDay()]} ${months[date.getUTCMonth()]} ${date.getUTCDate()}`;
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${weekdays[date.getUTCDay()]}, ${months[date.getUTCMonth()]} ${date.getUTCDate()}`;
   }
 
   function formatClimateLookupDate(date: Date): string {
-    const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     return `${weekdays[date.getUTCDay()]}, ${months[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
   }
 
@@ -109,15 +138,20 @@ export function renderHtmlEmail(text: string): string {
     days: Array<{ date: string; records: Record<string, string> }>,
     city: string,
     date: Date
-  ): { temperature: number; text: string } | null {
+  ): { temperature: number; years: string[] } | null {
     const targetDate = formatClimateLookupDate(date).toLowerCase();
     const day = days.find((item) => item.date.toLowerCase() === targetDate);
     if (!day) return null;
     const entry = Object.entries(day.records).find(([site]) => site.toLowerCase() === city.toLowerCase());
     if (!entry) return null;
-    const m = entry[1].match(/^(\d{2,3})F\b/i);
-    if (!m) return null;
-    return { temperature: Number(m[1]), text: entry[1] };
+    return parseClimateRecordValue(entry[1]);
+  }
+
+  function formatYears(years: string[]): string {
+    if (years.length === 0) return "";
+    if (years.length === 1) return years[0]!;
+    if (years.length === 2) return `${years[0]} and ${years[1]}`;
+    return `${years.slice(0, -1).join(", ")}, and ${years[years.length - 1]}`;
   }
 
   function buildPrelimRanges(
@@ -143,16 +177,20 @@ export function renderHtmlEmail(text: string): string {
 
     const span = Math.max(1, scaleMax - scaleMin);
     const widthFor = (value: number) => Math.max(0, Math.min(100, ((value - scaleMin) / span) * 100));
-    const wrapperStyle = 'margin:12px 0 18px 0;border-top:1px solid #e5e7eb;';
-    let out = `<div style="${wrapperStyle}">`;
+    const uiFont = "font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;";
+    let out = `<div style="${uiFont}margin:16px 0 20px 0;color:#111827;">`;
+
+    out += '<div style="font-size:19px;line-height:1.25;font-weight:700;letter-spacing:-0.01em;margin-bottom:3px;">Point forecast</div>';
+    out += '<div style="font-size:13px;line-height:1.35;color:#6b7280;margin-bottom:14px;">Daily low–high range and precipitation chance</div>';
 
     rows.forEach((r, rowIndex) => {
       const [city, t1, t2, t3, t4, p1, p2, p3, p4] = r;
       const temps = [Number(t1), Number(t2), Number(t3), Number(t4)];
       const pops = [Number(p1), Number(p2), Number(p3), Number(p4)];
       const startsWithHigh = temps[0]! >= temps[1]!;
-      out += `<div style="padding:12px 0 ${rowIndex === rows.length - 1 ? '4px' : '12px'} 0;${rowIndex > 0 ? 'border-top:1px solid #e5e7eb;' : ''}">`;
-      out += `<div style="font-weight:700;color:#0f172a;margin-bottom:7px;">${escapeHtml(city)}</div>`;
+
+      out += `<div style="padding:${rowIndex === 0 ? "0" : "18px"} 0 4px 0;${rowIndex > 0 ? "border-top:1px solid #e5e7eb;" : ""}">`;
+      out += `<div style="font-size:16px;line-height:1.3;font-weight:700;letter-spacing:-0.005em;margin-bottom:12px;">${escapeHtml(titleCasePlace(city))}</div>`;
 
       for (let pair = 0; pair < 2; pair++) {
         const a = pair * 2;
@@ -168,30 +206,45 @@ export function renderHtmlEmail(text: string): string {
         const left = widthFor(low);
         const right = widthFor(high);
         const rangeWidth = Math.max(2, right - left);
-        const rightWidth = Math.max(0, 100 - left - rangeWidth);
+        const rainText = dayPop === nightPop
+          ? `Rain ${dayPop}%`
+          : `Rain · day ${dayPop}% · night ${nightPop}%`;
 
-        out += '<div style="margin:0 0 11px 0;">';
-        out += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
-          '<tr>' +
-            `<td style="padding:0 8px 4px 0;font-weight:600;white-space:nowrap;">${escapeHtml(dateLabel)}</td>` +
-            `<td align="right" style="padding:0 0 4px 8px;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">Low ${low}° &nbsp; High <strong style="color:#111111;">${high}°</strong></td>` +
-          '</tr>' +
-        '</table>';
-        out += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;height:8px;border-collapse:collapse;table-layout:fixed;">' +
-          '<tr>' +
-            `<td width="${left.toFixed(1)}%" style="height:8px;background:#e5e7eb;font-size:0;line-height:0;">&nbsp;</td>` +
-            `<td width="${rangeWidth.toFixed(1)}%" style="height:8px;background:#475569;font-size:0;line-height:0;">&nbsp;</td>` +
-            `<td width="${rightWidth.toFixed(1)}%" style="height:8px;background:#e5e7eb;font-size:0;line-height:0;">&nbsp;</td>` +
-          '</tr>' +
-        '</table>';
-        out += `<div style="margin-top:4px;color:#6b7280;font-size:14px;">Rain: day ${dayPop}% · night ${nightPop}%`;
+        out += `<div style="margin:0 0 ${pair === 0 ? "18px" : "8px"} 0;">`;
+        out += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse!important;">';
+        out += '<tr>';
+        out += `<td style="padding:0 8px 7px 0;font-size:15px;line-height:1.25;font-weight:650;white-space:nowrap;color:#111827!important;text-decoration:none!important;"><span x-apple-data-detectors="false" style="color:#111827!important;text-decoration:none!important;">${escapeHtml(dateLabel)}</span></td>`;
+        out += `<td align="right" style="padding:0 0 7px 8px;font-size:14px;line-height:1.25;white-space:nowrap;font-variant-numeric:tabular-nums;color:#6b7280;">Low <span style="color:#374151;font-weight:600;">${low}°</span>&nbsp;&nbsp; High <strong style="color:#111827;font-weight:700;">${high}°</strong></td>`;
+        out += '</tr></table>';
+
+        out += '<div style="width:100%;height:7px;background:#e5e7eb;border-radius:999px;overflow:hidden;line-height:0;font-size:0;">';
+        out += `<div style="height:7px;margin-left:${left.toFixed(1)}%;width:${rangeWidth.toFixed(1)}%;background:#64748b;border-radius:999px;line-height:0;font-size:0;">&nbsp;</div>`;
+        out += '</div>';
+
+        out += `<div style="margin-top:7px;font-size:13px;line-height:1.35;color:#6b7280;">${escapeHtml(rainText)}</div>`;
+
         if (rec) {
           const delta = rec.temperature - high;
-          const comparison = delta === 0 ? 'record tie' : delta > 0 ? `${delta}° below record` : `${Math.abs(delta)}° above record`;
-          out += ` &nbsp;·&nbsp; Record ${escapeHtml(rec.text)} · <strong style="color:#374151;">${comparison}</strong>`;
+          const comparison = delta === 0
+            ? "Ties the record high"
+            : delta > 0
+              ? `${delta}° below the record high`
+              : `${Math.abs(delta)}° above the record high`;
+
+          out += `<div style="margin-top:4px;font-size:13px;line-height:1.35;color:#374151;font-weight:650;white-space:nowrap;">${escapeHtml(comparison)}</div>`;
+
+          if (delta <= 0 && rec.years.length > 0) {
+            const years = formatYears(rec.years);
+            const context = delta === 0
+              ? `Previously reached in ${years}`
+              : `Previous record reached in ${years}`;
+            out += `<div style="margin-top:1px;font-size:12px;line-height:1.35;color:#8a8f98;">${escapeHtml(context)}</div>`;
+          }
         }
-        out += '</div></div>';
+
+        out += '</div>';
       }
+
       out += '</div>';
     });
 
@@ -202,41 +255,36 @@ export function renderHtmlEmail(text: string): string {
   let html = "";
   let prevWasSeparator = false;
   let climateDays: Array<{ date: string; records: Record<string, string> }> = [];
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    // Escape, then preserve spacing faithfully
     const esc0 = escapeHtml(line);
-    // Convert runs of 2+ spaces to a breakable pattern ("&nbsp; ") to avoid long unbreakable sequences
     const esc = esc0.replace(/ {2,}/g, (m) => {
       const pairs = Math.floor(m.length / 2);
       const rem = m.length % 2;
       return "&nbsp; ".repeat(pairs) + (rem ? "&nbsp;" : "");
     });
-    // Insert a subtle separator before headers or '&&' separators (but not at very top)
+
     if (i > 0 && (isSectionHeader(line) || isAmpSeparator(line)) && !prevWasSeparator) {
       html += '<div style="margin:10px 0 6px 0;border-top:1px solid #e5e7eb;"></div>';
       prevWasSeparator = true;
     }
-    // If it's a bare '&&' separator, do not render the line text itself
+
     if (isAmpSeparator(line)) {
       continue;
     }
 
-    // Record-high block inside .CLIMATE: preserve its heading and turn the repeated
-    // date/site lines into a compact table without duplicating the source text.
     if (isClimateRecordsHeader(line)) {
-      const headerContent = escapeHtml(line);
-      html += '<div style="white-space:pre-wrap;word-break:normal;overflow-wrap:normal;color:#0f172a;font-weight:700;">' + headerContent + '</div>';
-
       const days: Array<{ date: string; records: Record<string, string> }> = [];
       const sites: string[] = [];
       let currentDay: { date: string; records: Record<string, string> } | undefined;
       let j = i + 1;
+
       for (; j < lines.length; j++) {
-        const nxt = lines[j] ?? '';
+        const nxt = lines[j] ?? "";
         const trimmed = nxt.trim();
         if (isSectionHeader(nxt) || isAmpSeparator(nxt)) break;
-        if (trimmed === '') continue;
+        if (trimmed === "") continue;
 
         const date = parseClimateDate(nxt);
         if (date) {
@@ -265,25 +313,20 @@ export function renderHtmlEmail(text: string): string {
       }
     }
 
-    // PRELIMINARY POINT TEMPS/POPS block: render as labeled low/high range bars.
     if (isPrelimHeader(line)) {
-      const headerContent = (escapeHtml(line).length === 0 ? '&nbsp;' : escapeHtml(line));
-      html += '<div style="white-space:pre-wrap;word-break:normal;overflow-wrap:normal;color:#0f172a;font-weight:700;">' + headerContent + '</div>';
       const rows: Array<[string,string,string,string,string,string,string,string,string]> = [];
       let j = i + 1;
+
       for (; j < lines.length; j++) {
-        const nxt = lines[j] ?? '';
+        const nxt = lines[j] ?? "";
         const t = nxt.trim();
-        if (t === '' || isSectionHeader(nxt) || isAmpSeparator(nxt)) {
-          break;
-        }
+        if (t === "" || isSectionHeader(nxt) || isAmpSeparator(nxt)) break;
+
         const parsed = parsePrelimRow(nxt);
-        if (parsed) {
-          rows.push(parsed);
-        } else {
-          break;
-        }
+        if (!parsed) break;
+        rows.push(parsed);
       }
+
       if (rows.length > 0) {
         html += buildPrelimRanges(rows, climateDays);
         i = j - 1;
@@ -291,25 +334,24 @@ export function renderHtmlEmail(text: string): string {
         continue;
       }
     }
-    // Render each original line as its own block; preserve spaces and allow wrapping
+
     const content = esc.length === 0 ? "&nbsp;" : esc;
-    const baseStyle = 'white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;';
-    const headerExtra = isSectionHeader(line) ? 'color:#0f172a;font-weight:700!important;' : '';
-    html += '<div style="' + baseStyle + headerExtra + '">' + content + "</div>";
+    const baseStyle = "white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;";
+    const headerExtra = isSectionHeader(line) ? "color:#0f172a;font-weight:700!important;" : "";
+    html += `<div style="${baseStyle}${headerExtra}">${content}</div>`;
     prevWasSeparator = false;
   }
 
   return (
     "<!doctype html>" +
-    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><style>html,body{margin:0!important;padding:0!important;width:100%!important;min-width:100%!important;background:#fafafa!important;color:#111111!important}table{border-collapse:collapse!important}@media (prefers-color-scheme: dark){ html,body{ background:#fafafa!important; color:#111111!important } }</style></head>' +
+    '<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><style>html,body{margin:0!important;padding:0!important;width:100%!important;min-width:100%!important;background:#fafafa!important;color:#111111!important}table{border-collapse:collapse!important}a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font:inherit!important}#MessageViewBody a{color:inherit!important;text-decoration:none!important}@media (prefers-color-scheme: dark){html,body{background:#fafafa!important;color:#111111!important}}</style></head>' +
     '<body bgcolor="#fafafa" style="margin:0;padding:0;padding-inline:8px!important;font-size:16px;line-height:1.5;background:#fafafa!important;color:#111111!important;">' +
       '<div style="width:100vw;min-width:100vw;max-width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);background:#fafafa;">' +
       '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#fafafa" style="background:#fafafa;color:#111111!important;margin:0;padding:0;border-collapse:collapse;table-layout:fixed;width:100%!important;min-width:100%!important;max-width:100%!important;">' +
         '<tr><td align="left" bgcolor="#fafafa" style="padding:0;background:#fafafa;">' +
           '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#fafafa" style="border-collapse:collapse;table-layout:fixed;width:100%!important;min-width:100%!important;max-width:100%!important;margin:0;background:#fafafa;">' +
             '<tr><td bgcolor="#fafafa" style="background:#fafafa;">' +
-            '<div style="font-family:\'Courier New\',Consolas,Menlo,\'Lucida Console\',monospace;' +
-              'font-variant-ligatures:none;tab-size:8;letter-spacing:0;font-size:18px!important;line-height:1.5;text-align:left;color:#111111!important;font-weight:500;">' +
+            '<div style="font-family:\'Courier New\',Consolas,Menlo,\'Lucida Console\',monospace;font-variant-ligatures:none;tab-size:8;letter-spacing:0;font-size:18px!important;line-height:1.5;text-align:left;color:#111111!important;font-weight:500;">' +
               html +
             '</div>' +
           '</td></tr></table>' +

@@ -52,22 +52,22 @@ export function renderHtmlEmail(text: string): string {
 
   function buildClimateRecordsTable(days: Array<{ date: string; records: Record<string, string> }>, sites: string[]): string {
     const wrapperStyle = 'overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0 18px 0;';
-    const tableStyle = 'width:100%;max-width:100%;min-width:620px;border:1px solid #e5e7eb;border-radius:6px;border-collapse:separate;border-spacing:0;background:transparent;table-layout:auto;';
+    const tableStyle = 'width:100%;max-width:100%;min-width:760px;border:1px solid #e5e7eb;border-radius:6px;border-collapse:separate;border-spacing:0;background:transparent;table-layout:auto;';
     const rowSep = 'border-top:1px solid #e5e7eb;';
     const thBase = 'padding:7px 10px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-weight:700;white-space:nowrap;text-align:right;';
-    const dateTd = 'padding:8px 12px;text-align:left;white-space:nowrap;font-weight:600;';
+    const siteTd = 'padding:8px 12px;text-align:left;white-space:nowrap;font-weight:600;';
     const valueTd = 'padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;';
     let out = `<div style="${wrapperStyle}"><table role="presentation" cellpadding="0" cellspacing="0" style="${tableStyle}">`;
     out += '<thead><tr>' +
-      `<th style="${thBase} text-align:left;">Date</th>` +
-      sites.map((site) => `<th style="${thBase}">${escapeHtml(site)}</th>`).join('') +
+      `<th style="${thBase} text-align:left;">City</th>` +
+      days.map((day) => `<th style="${thBase}">${escapeHtml(day.date)}</th>`).join('') +
     '</tr></thead>';
-    days.forEach((day, idx) => {
+    sites.forEach((site, idx) => {
       const trStyle = idx === 0 ? '' : rowSep;
       const zebra = idx % 2 === 1 ? 'background:rgba(0,0,0,0.03);' : '';
       out += `<tr style="${trStyle}${zebra}">` +
-        `<td style="${dateTd}">${escapeHtml(day.date)}</td>` +
-        sites.map((site) => `<td style="${valueTd}">${escapeHtml(day.records[site] ?? '—')}</td>`).join('') +
+        `<td style="${siteTd}">${escapeHtml(site)}</td>` +
+        days.map((day) => `<td style="${valueTd}">${escapeHtml(day.records[site] ?? '—')}</td>`).join('') +
       '</tr>';
     });
     out += '</table></div>';

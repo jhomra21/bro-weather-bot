@@ -20,6 +20,13 @@ export function renderHtmlEmail(text: string): string {
     return /^\s*\.PRELIMINARY POINT TEMPS\/POPS/i.test(line);
   }
 
+  function nextNonEmptyLineIndex(start: number): number | null {
+    for (let index = start + 1; index < lines.length; index++) {
+      if ((lines[index] ?? "").trim() !== "") return index;
+    }
+    return null;
+  }
+
   function isClimateRecordsHeader(line: string): boolean {
     return /^\s*Record High Temperatures from .+:\s*$/i.test(line);
   }
@@ -266,12 +273,16 @@ export function renderHtmlEmail(text: string): string {
       return "&nbsp; ".repeat(pairs) + (rem ? "&nbsp;" : "");
     });
 
-    if (i > 0 && ((isSectionHeader(line) && !isPrelimHeader(line)) || isAmpSeparator(line)) && !prevWasSeparator) {
+    const nextNonEmptyIndex = isAmpSeparator(line) ? nextNonEmptyLineIndex(i) : null;
+    const isPrelimBoundary = nextNonEmptyIndex !== null && isPrelimHeader(lines[nextNonEmptyIndex] ?? "");
+
+    if (i > 0 && ((isSectionHeader(line) && !isPrelimHeader(line)) || (isAmpSeparator(line) && !isPrelimBoundary)) && !prevWasSeparator) {
       html += '<div style="margin:10px 0 6px 0;border-top:1px solid #e5e7eb;"></div>';
       prevWasSeparator = true;
     }
 
     if (isAmpSeparator(line)) {
+      if (isPrelimBoundary) i = nextNonEmptyIndex! - 1;
       continue;
     }
 

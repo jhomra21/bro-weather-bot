@@ -25,6 +25,21 @@ export function renderHtmlEmail(text: string): string {
     return /^\s*\.PRELIMINARY POINT TEMPS\/POPS/i.test(line);
   }
 
+  function isClimateRecordsHeader(line: string): boolean {
+    return /^\s*Record High Temperatures from .+:\s*$/i.test(line);
+  }
+
+  function parseClimateDate(line: string): string | null {
+    const m = line.match(/^\s*((?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4})\s*$/i);
+    return m ? m[1]! : null;
+  }
+
+  function parseClimateRecordRow(row: string): [string, string] | null {
+    const m = row.match(/^\s*([A-Za-z][A-Za-z ./'()\-]*?):\s*(\d{2,3}F(?:\s+\([^)]+\))?)\s*$/i);
+    if (!m) return null;
+    return [m[1]!.trim(), m[2]!.trim()];
+  }
+
   // Parse a Temps/POPS data row, return tuple or null if it doesn't match
   function parsePrelimRow(row: string): [string,string,string,string,string,string,string,string,string] | null {
     const m = row.match(/^\s*([A-Z0-9][A-Z0-9 ./'()\-]*?)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\/\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*$/i);
@@ -33,6 +48,30 @@ export function renderHtmlEmail(text: string): string {
     const t1 = m[2]!; const t2 = m[3]!; const t3 = m[4]!; const t4 = m[5]!;
     const p1 = m[6]!; const p2 = m[7]!; const p3 = m[8]!; const p4 = m[9]!;
     return [city, t1, t2, t3, t4, p1, p2, p3, p4];
+  }
+
+  function buildClimateRecordsTable(days: Array<{ date: string; records: Record<string, string> }>, sites: string[]): string {
+    const wrapperStyle = 'overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0 18px 0;';
+    const tableStyle = 'width:100%;max-width:100%;min-width:620px;border:1px solid #e5e7eb;border-radius:6px;border-collapse:separate;border-spacing:0;background:transparent;table-layout:auto;';
+    const rowSep = 'border-top:1px solid #e5e7eb;';
+    const thBase = 'padding:7px 10px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-weight:700;white-space:nowrap;text-align:right;';
+    const dateTd = 'padding:8px 12px;text-align:left;white-space:nowrap;font-weight:600;';
+    const valueTd = 'padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;';
+    let out = `<div style="${wrapperStyle}"><table role="presentation" cellpadding="0" cellspacing="0" style="${tableStyle}">`;
+    out += '<thead><tr>' +
+      `<th style="${thBase} text-align:left;">Date</th>` +
+      sites.map((site) => `<th style="${thBase}">${escapeHtml(site)}</th>`).join('') +
+    '</tr></thead>';
+    days.forEach((day, idx) => {
+      const trStyle = idx === 0 ? '' : rowSep;
+      const zebra = idx % 2 === 1 ? 'background:rgba(0,0,0,0.03);' : '';
+      out += `<tr style="${trStyle}${zebra}">` +
+        `<td style="${dateTd}">${escapeHtml(day.date)}</td>` +
+        sites.map((site) => `<td style="${valueTd}">${escapeHtml(day.records[site] ?? '—')}</td>`).join('') +
+      '</tr>';
+    });
+    out += '</table></div>';
+    return out;
   }
 
   function buildPrelimTable(rows: Array<[string,string,string,string,string,string,string,string,string]>): string {
@@ -90,6 +129,48 @@ export function renderHtmlEmail(text: string): string {
     // If it's a bare '&&' separator, do not render the line text itself
     if (isAmpSeparator(line)) {
       continue;
+    }
+
+    // Record-high block inside .CLIMATE: preserve its heading and turn the repeated
+    // date/site lines into a compact table without duplicating the source text.
+    if (isClimateRecordsHeader(line)) {
+      const headerContent = escapeHtml(line);
+      html += '<div style="white-space:pre-wrap;word-break:normal;overflow-wrap:normal;color:#0f172a;font-weight:700;">' + headerContent + '</div>';
+
+      const days: Array<{ date: string; records: Record<string, string> }> = [];
+      const sites: string[] = [];
+      let currentDay: { date: string; records: Record<string, string> } | undefined;
+      let j = i + 1;
+      for (; j < lines.length; j++) {
+        const nxt = lines[j] ?? '';
+        const trimmed = nxt.trim();
+        if (isSectionHeader(nxt) || isAmpSeparator(nxt)) break;
+        if (trimmed === '') continue;
+
+        const date = parseClimateDate(nxt);
+        if (date) {
+          currentDay = { date, records: {} };
+          days.push(currentDay);
+          continue;
+        }
+
+        const record = parseClimateRecordRow(nxt);
+        if (record && currentDay) {
+          const [site, value] = record;
+          currentDay.records[site] = value;
+          if (!sites.includes(site)) sites.push(site);
+          continue;
+        }
+
+        break;
+      }
+
+      if (days.length > 0 && sites.length > 0) {
+        html += buildClimateRecordsTable(days, sites);
+        i = j - 1;
+        prevWasSeparator = false;
+        continue;
+      }
     }
 
     // PRELIMINARY POINT TEMPS/POPS block: render as a minimal table

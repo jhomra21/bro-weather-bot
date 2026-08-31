@@ -74,43 +74,134 @@ export function renderHtmlEmail(text: string): string {
     return out;
   }
 
-  function buildPrelimTable(rows: Array<[string,string,string,string,string,string,string,string,string]>): string {
-    const wrapperStyle = 'overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0 18px 0;';
-    const tableStyle = 'width:100%;max-width:100%;min-width:560px;border:1px solid #e5e7eb;border-radius:6px;border-collapse:separate;border-spacing:0;background:transparent;table-layout:auto;';
-    const rowSep = 'border-top:1px solid #e5e7eb;';
-    const nameTd = 'padding:8px 12px;text-align:left;white-space:nowrap;word-break:keep-all;overflow-wrap:normal;font-weight:600;min-width:10ch;width:35%;';
-    const numTd = 'padding:8px 10px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;width:3ch;min-width:3ch;';
-    const slashTd = 'padding:8px 8px;color:#9ca3af;text-align:center;width:1ch;min-width:1ch;';
-    const thBase = 'padding:6px 10px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-weight:700;white-space:nowrap;';
-    let out = `<div style="${wrapperStyle}"><table role="presentation" cellpadding="0" cellspacing="0" style="${tableStyle}">`;
-    out += '<thead><tr>' +
-      `<th style="${thBase} text-align:left;">City</th>` +
-      `<th style="${thBase} text-align:center;" colspan="4">Temps</th>` +
-      `<th style="${thBase} text-align:center;">/</th>` +
-      `<th style="${thBase} text-align:center;" colspan="4">PoPs</th>` +
-    '</tr></thead>';
-    rows.forEach((r, idx) => {
+  function parseIssuedDate(): Date | null {
+    const months: Record<string, number> = {
+      Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+      Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+    };
+    for (const line of lines) {
+      const m = line.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{4})\b/);
+      if (!m) continue;
+      const month = months[m[1]!];
+      if (month === undefined) continue;
+      return new Date(Date.UTC(Number(m[3]), month, Number(m[2])));
+    }
+    return null;
+  }
+
+  function addDays(date: Date, count: number): Date {
+    return new Date(date.getTime() + count * 86400000);
+  }
+
+  function formatForecastDate(date: Date): string {
+    const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${weekdays[date.getUTCDay()]} ${months[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  }
+
+  function formatClimateLookupDate(date: Date): string {
+    const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${weekdays[date.getUTCDay()]}, ${months[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
+  }
+
+  function recordFor(
+    days: Array<{ date: string; records: Record<string, string> }>,
+    city: string,
+    date: Date
+  ): { temperature: number; text: string } | null {
+    const targetDate = formatClimateLookupDate(date).toLowerCase();
+    const day = days.find((item) => item.date.toLowerCase() === targetDate);
+    if (!day) return null;
+    const entry = Object.entries(day.records).find(([site]) => site.toLowerCase() === city.toLowerCase());
+    if (!entry) return null;
+    const m = entry[1].match(/^(\d{2,3})F\b/i);
+    if (!m) return null;
+    return { temperature: Number(m[1]), text: entry[1] };
+  }
+
+  function buildPrelimRanges(
+    rows: Array<[string,string,string,string,string,string,string,string,string]>,
+    climateDays: Array<{ date: string; records: Record<string, string> }>
+  ): string {
+    const issuedDate = parseIssuedDate();
+    const firstStartsWithHigh = Number(rows[0]?.[1] ?? 0) >= Number(rows[0]?.[2] ?? 0);
+    const allTemps = rows.flatMap((r) => [Number(r[1]), Number(r[2]), Number(r[3]), Number(r[4])]);
+    let scaleMin = Math.min(...allTemps) - 2;
+    let scaleMax = Math.max(...allTemps) + 2;
+
+    if (issuedDate) {
+      rows.forEach((r) => {
+        const city = r[0];
+        for (let pair = 0; pair < 2; pair++) {
+          const dayOffset = firstStartsWithHigh ? pair : pair + 1;
+          const rec = recordFor(climateDays, city, addDays(issuedDate, dayOffset));
+          if (rec) scaleMax = Math.max(scaleMax, rec.temperature + 2);
+        }
+      });
+    }
+
+    const span = Math.max(1, scaleMax - scaleMin);
+    const widthFor = (value: number) => Math.max(0, Math.min(100, ((value - scaleMin) / span) * 100));
+    const wrapperStyle = 'margin:12px 0 18px 0;border-top:1px solid #e5e7eb;';
+    let out = `<div style="${wrapperStyle}">`;
+
+    rows.forEach((r, rowIndex) => {
       const [city, t1, t2, t3, t4, p1, p2, p3, p4] = r;
-      const trStyle = idx === 0 ? '' : rowSep;
-      const zebra = idx % 2 === 1 ? 'background:rgba(0,0,0,0.03);' : '';
-      out += `<tr style="${trStyle}${zebra}">` +
-        `<td style="${nameTd}">${escapeHtml(city)}</td>` +
-        `<td style="${numTd}">${t1}</td>` +
-        `<td style="${numTd}">${t2}</td>` +
-        `<td style="${numTd}">${t3}</td>` +
-        `<td style="${numTd}">${t4}</td>` +
-        `<td style="${slashTd}">/</td>` +
-        `<td style="${numTd}">${p1}</td>` +
-        `<td style="${numTd}">${p2}</td>` +
-        `<td style="${numTd}">${p3}</td>` +
-        `<td style="${numTd}">${p4}</td>` +
-      '</tr>';
+      const temps = [Number(t1), Number(t2), Number(t3), Number(t4)];
+      const pops = [Number(p1), Number(p2), Number(p3), Number(p4)];
+      const startsWithHigh = temps[0]! >= temps[1]!;
+      out += `<div style="padding:12px 0 ${rowIndex === rows.length - 1 ? '4px' : '12px'} 0;${rowIndex > 0 ? 'border-top:1px solid #e5e7eb;' : ''}">`;
+      out += `<div style="font-weight:700;color:#0f172a;margin-bottom:7px;">${escapeHtml(city)}</div>`;
+
+      for (let pair = 0; pair < 2; pair++) {
+        const a = pair * 2;
+        const b = a + 1;
+        const high = startsWithHigh ? temps[a]! : temps[b]!;
+        const low = startsWithHigh ? temps[b]! : temps[a]!;
+        const dayPop = startsWithHigh ? pops[a]! : pops[b]!;
+        const nightPop = startsWithHigh ? pops[b]! : pops[a]!;
+        const dayOffset = startsWithHigh ? pair : pair + 1;
+        const date = issuedDate ? addDays(issuedDate, dayOffset) : null;
+        const dateLabel = date ? formatForecastDate(date) : `Forecast day ${pair + 1}`;
+        const rec = date ? recordFor(climateDays, city, date) : null;
+        const left = widthFor(low);
+        const right = widthFor(high);
+        const rangeWidth = Math.max(2, right - left);
+        const rightWidth = Math.max(0, 100 - left - rangeWidth);
+
+        out += '<div style="margin:0 0 11px 0;">';
+        out += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">' +
+          '<tr>' +
+            `<td style="padding:0 8px 4px 0;font-weight:600;white-space:nowrap;">${escapeHtml(dateLabel)}</td>` +
+            `<td align="right" style="padding:0 0 4px 8px;white-space:nowrap;font-variant-numeric:tabular-nums;color:#374151;">Low ${low}° &nbsp; High <strong style="color:#111111;">${high}°</strong></td>` +
+          '</tr>' +
+        '</table>';
+        out += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;height:8px;border-collapse:collapse;table-layout:fixed;">' +
+          '<tr>' +
+            `<td width="${left.toFixed(1)}%" style="height:8px;background:#e5e7eb;font-size:0;line-height:0;">&nbsp;</td>` +
+            `<td width="${rangeWidth.toFixed(1)}%" style="height:8px;background:#475569;font-size:0;line-height:0;">&nbsp;</td>` +
+            `<td width="${rightWidth.toFixed(1)}%" style="height:8px;background:#e5e7eb;font-size:0;line-height:0;">&nbsp;</td>` +
+          '</tr>' +
+        '</table>';
+        out += `<div style="margin-top:4px;color:#6b7280;font-size:14px;">Rain: day ${dayPop}% · night ${nightPop}%`;
+        if (rec) {
+          const delta = rec.temperature - high;
+          const comparison = delta === 0 ? 'record tie' : delta > 0 ? `${delta}° below record` : `${Math.abs(delta)}° above record`;
+          out += ` &nbsp;·&nbsp; Record ${escapeHtml(rec.text)} · <strong style="color:#374151;">${comparison}</strong>`;
+        }
+        out += '</div></div>';
+      }
+      out += '</div>';
     });
-    out += '</table></div>';
+
+    out += '</div>';
     return out;
   }
+
   let html = "";
   let prevWasSeparator = false;
+  let climateDays: Array<{ date: string; records: Record<string, string> }> = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
     // Escape, then preserve spacing faithfully
@@ -166,6 +257,7 @@ export function renderHtmlEmail(text: string): string {
       }
 
       if (days.length > 0 && sites.length > 0) {
+        climateDays = days;
         html += buildClimateRecordsTable(days, sites);
         i = j - 1;
         prevWasSeparator = false;
@@ -173,12 +265,10 @@ export function renderHtmlEmail(text: string): string {
       }
     }
 
-    // PRELIMINARY POINT TEMPS/POPS block: render as a minimal table
+    // PRELIMINARY POINT TEMPS/POPS block: render as labeled low/high range bars.
     if (isPrelimHeader(line)) {
-      // Render the header line with emphasis
       const headerContent = (escapeHtml(line).length === 0 ? '&nbsp;' : escapeHtml(line));
       html += '<div style="white-space:pre-wrap;word-break:normal;overflow-wrap:normal;color:#0f172a;font-weight:700;">' + headerContent + '</div>';
-      // Collect following rows until blank line, next header, or separator
       const rows: Array<[string,string,string,string,string,string,string,string,string]> = [];
       let j = i + 1;
       for (; j < lines.length; j++) {
@@ -191,17 +281,15 @@ export function renderHtmlEmail(text: string): string {
         if (parsed) {
           rows.push(parsed);
         } else {
-          // Stop at the first unparseable row to avoid swallowing other content
           break;
         }
       }
       if (rows.length > 0) {
-        html += buildPrelimTable(rows);
-        i = j - 1; // skip the rows we consumed
+        html += buildPrelimRanges(rows, climateDays);
+        i = j - 1;
         prevWasSeparator = false;
         continue;
       }
-      // If no parsed rows, fall through to normal rendering of this line
     }
     // Render each original line as its own block; preserve spaces and allow wrapping
     const content = esc.length === 0 ? "&nbsp;" : esc;

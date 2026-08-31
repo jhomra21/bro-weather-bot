@@ -1,0 +1,151 @@
+name: Apply and validate divider dedupe
+
+on:
+  push:
+    branches:
+      - fix/dedupe-weather-section-divider
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dedupe-weather-section-divider
+      - uses: oven-sh/setup-bun@v2
+      - name: Apply divider dedupe
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/renderHtmlEmail.ts')
+          s = p.read_text()
+
+          anchor = '''  function isPrelimHeader(line: string): boolean {
+    return /^\\s*\\.PRELIMINARY POINT TEMPS\\/POPS/i.test(line);
+  }
+'''
+          helper = '''  function isPrelimHeader(line: string): boolean {
+    return /^\\s*\\.PRELIMINARY POINT TEMPS\\/POPS/i.test(line);
+  }
+
+  function nextNonEmptyLineIndex(start: number): number | null {
+    for (let index = start + 1; index < lines.length; index++) {
+      if ((lines[index] ?? "").trim() !== "") return index;
+    }
+    return null;
+  }
+'''
+          if helper not in s:
+            if anchor not in s:
+              raise SystemExit('prelim helper anchor not found')
+            s = s.replace(anchor, helper, 1)
+
+          old = '''    if (i > 0 && ((isSectionHeader(line) && !isPrelimHeader(line)) || isAmpSeparator(line)) && !prevWasSeparator) {
+      html += '<div style="margin:10px 0 6px 0;border-top:1px solid #e5e7eb;"></div>';
+      prevWasSeparator = true;
+    }
+
+    if (isAmpSeparator(line)) {
+      continue;
+    }
+'''
+          new = '''    const nextNonEmptyIndex = isAmpSeparator(line) ? nextNonEmptyLineIndex(i) : null;
+    const isPrelimBoundary = nextNonEmptyIndex !== null && isPrelimHeader(lines[nextNonEmptyIndex] ?? "");
+
+    if (i > 0 && ((isSectionHeader(line) && !isPrelimHeader(line)) || (isAmpSeparator(line) && !isPrelimBoundary)) && !prevWasSeparator) {
+      html += '<div style="margin:10px 0 6px 0;border-top:1px solid #e5e7eb;"></div>';
+      prevWasSeparator = true;
+    }
+
+    if (isAmpSeparator(line)) {
+      if (isPrelimBoundary) i = nextNonEmptyIndex! - 1;
+      continue;
+    }
+'''
+          if new not in s:
+            if old not in s:
+              raise SystemExit('separator block not found')
+            s = s.replace(old, new, 1)
+
+          if not s.endswith('\n'):
+            s += '\n'
+          p.write_text(s)
+          PY
+
+          git diff --check
+          if ! git diff --quiet -- lib/renderHtmlEmail.ts; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '4189824+github-actions[bot]@users.noreply.github.com'
+            git add lib/renderHtmlEmail.ts
+            git commit -m 'fix: dedupe structured weather divider'
+            git push origin HEAD:fix/dedupe-weather-section-divider
+          fi
+
+      - name: Validate actual NWS boundary shape
+        shell: bash
+        run: |
+          bun install --frozen-lockfile
+          bun run generate-types
+          bunx tsc
+
+          cat > validate-divider-dedupe.ts <<'TS'
+          import { renderHtmlEmail } from './lib/renderHtmlEmail.ts';
+
+          const sample = `FXUS64 KBRO 311135 AAB
+AFDBRO
+Area Forecast Discussion...UPDATED
+National Weather Service Brownsville TX
+635 AM CDT Mon Aug 31 2026
+
+.CLIMATE...
+Record High Temperatures from August 31st to September 4th:
+
+Monday, August 31, 2026
+Brownsville: 103F (2023)
+Harlingen: 104F (1958)
+McAllen: 104F (2023, 2017)
+
+Tuesday, September 1, 2026
+Brownsville: 100F (2023, 2020)
+Harlingen: 103F (1928, 1952)
+McAllen: 106F (2018)
+
+&&
+
+.PRELIMINARY POINT TEMPS/POPS...
+BROWNSVILLE 98 80 98 80 / 0 0 0 0
+HARLINGEN 102 76 102 76 / 0 0 0 0
+MCALLEN 104 80 104 81 / 0 0 0 0
+
+.BRO WATCHES/WARNINGS/ADVISORIES...
+TX...None.`;
+
+          const html = renderHtmlEmail(sample);
+          const climate = html.indexOf('Record highs');
+          const forecast = html.indexOf('Point forecast');
+          if (climate < 0 || forecast < 0) throw new Error('structured sections missing');
+
+          const between = html.slice(climate, forecast);
+          const dividers = between.match(/border-top:1px solid #e5e7eb;/g) ?? [];
+          if (dividers.length !== 1) {
+            throw new Error(`expected one divider between climate and forecast, found ${dividers.length}`);
+          }
+          if (between.includes('>&nbsp;</div>')) {
+            throw new Error('source blank spacer remains between climate and forecast');
+          }
+          if (html.includes('border:1px solid #e5e7eb;border-radius:12px')) {
+            throw new Error('rounded climate-table border returned');
+          }
+          if (!html.includes('border:0;border-collapse:separate!important;border-spacing:0;background:transparent;table-layout:fixed;')) {
+            throw new Error('borderless climate-table style missing');
+          }
+
+          console.log('actual NWS divider boundary: PASS');
+          TS
+          bun validate-divider-dedupe.ts
+          git diff --check

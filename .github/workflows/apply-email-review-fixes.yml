@@ -1,0 +1,50 @@
+name: Apply email review fixes
+
+on:
+  push:
+    branches:
+      - fix/email-forecast-mobile-polish
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/email-forecast-mobile-polish
+      - name: Apply review fixes
+        shell: bash
+        run: |
+          if [ "$(git log -1 --pretty=%s)" = "fix: address weather email review" ]; then
+            echo "Review fixes already applied"
+            exit 0
+          fi
+
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path("lib/renderHtmlEmail.ts")
+          s = p.read_text()
+
+          old = '  function titleCasePlace(value: string): string {\n    return value.toLowerCase().replace(/(^|[\\s/\\-])([a-z])/g, (_, before: string, letter: string) => {\n      return before + letter.toUpperCase();\n    });\n  }'
+          new = '  function titleCasePlace(value: string): string {\n    if (value.toUpperCase() === "MCALLEN") return "McAllen";\n    return value.toLowerCase().replace(/(^|[\\s/\\-])([a-z])/g, (_, before: string, letter: string) => {\n      return before + letter.toUpperCase();\n    });\n  }'
+          if old not in s:
+            raise SystemExit("title-case helper not found")
+          s = s.replace(old, new, 1)
+
+          broad = '#MessageViewBody a{color:inherit!important;text-decoration:none!important}'
+          if broad not in s:
+            raise SystemExit("broad Apple Mail selector not found")
+          s = s.replace(broad, '', 1)
+
+          p.write_text(s)
+          PY
+
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/renderHtmlEmail.ts
+          git commit -m "fix: address weather email review"
+          git push origin HEAD:fix/email-forecast-mobile-polish

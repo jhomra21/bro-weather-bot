@@ -1,0 +1,124 @@
+name: Apply table and divider cleanup
+
+on:
+  push:
+    branches:
+      - fix/table-border-section-divider
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/table-border-section-divider
+      - uses: oven-sh/setup-bun@v2
+      - name: Apply cleanup
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/renderHtmlEmail.ts')
+          s = p.read_text()
+
+          old_table = 'border:1px solid #e5e7eb;border-radius:12px;border-collapse:separate!important;border-spacing:0;background:#ffffff;table-layout:fixed;overflow:hidden;'
+          new_table = 'border:0;border-collapse:separate!important;border-spacing:0;background:transparent;table-layout:fixed;'
+          if old_table in s:
+              s = s.replace(old_table, new_table, 1)
+          elif new_table not in s:
+              raise SystemExit('climate table style not found')
+
+          old_wrapper = 'let out = `<div style="${uiFont}margin:16px 0 20px 0;color:#111827;">`;'
+          new_wrapper = 'let out = `<div style="${uiFont}margin:18px 0 20px 0;border-top:1px solid #e5e7eb;padding-top:16px;color:#111827;">`;'
+          if old_wrapper in s:
+              s = s.replace(old_wrapper, new_wrapper, 1)
+          elif new_wrapper not in s:
+              raise SystemExit('point forecast wrapper not found')
+
+          old_condition = 'if (i > 0 && (isSectionHeader(line) || isAmpSeparator(line)) && !prevWasSeparator) {'
+          new_condition = 'if (i > 0 && ((isSectionHeader(line) && !isPrelimHeader(line)) || isAmpSeparator(line)) && !prevWasSeparator) {'
+          if old_condition in s:
+              s = s.replace(old_condition, new_condition, 1)
+          elif new_condition not in s:
+              raise SystemExit('section separator condition not found')
+
+          if not s.endswith('\n'):
+              s += '\n'
+          p.write_text(s)
+          PY
+
+          git diff --check
+          if git diff --quiet -- lib/renderHtmlEmail.ts; then
+            echo 'Cleanup already applied'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add lib/renderHtmlEmail.ts
+            git commit -m 'fix: simplify weather section dividers'
+            git push origin HEAD:fix/table-border-section-divider
+          fi
+
+      - name: Validate renderer
+        shell: bash
+        run: |
+          bun install --frozen-lockfile
+          bun run generate-types
+          bunx tsc
+
+          cat > validate-table-divider.ts <<'TS'
+          import { renderHtmlEmail } from './lib/renderHtmlEmail.ts';
+
+          const sample = `FXUS64 KBRO 311135 AAB
+          AFDBRO
+          Area Forecast Discussion...UPDATED
+          National Weather Service Brownsville TX
+          635 AM CDT Mon Aug 31 2026
+
+          .CLIMATE...
+          Record High Temperatures from August 31st to September 4th:
+
+          Monday, August 31, 2026
+          Brownsville: 103F (2023)
+          Harlingen: 104F (1958)
+          McAllen: 104F (2023, 2017)
+
+          Tuesday, September 1, 2026
+          Brownsville: 100F (2023, 2020)
+          Harlingen: 103F (1928, 1952)
+          McAllen: 106F (2018)
+
+          .PRELIMINARY POINT TEMPS/POPS...
+          BROWNSVILLE 98 80 98 80 / 0 0 0 0
+          HARLINGEN 102 76 102 76 / 0 0 0 0
+          MCALLEN 104 80 104 81 / 0 0 0 0
+
+          .BRO WATCHES/WARNINGS/ADVISORIES...
+          TX...None.`;
+
+          const html = renderHtmlEmail(sample);
+          if (!html.includes('Record highs') || !html.includes('Point forecast')) {
+            throw new Error('structured weather sections missing');
+          }
+          if (html.includes('border:1px solid #e5e7eb;border-radius:12px')) {
+            throw new Error('legacy rounded climate-table border remains');
+          }
+          if (!html.includes('border:0;border-collapse:separate!important;border-spacing:0;background:transparent;table-layout:fixed;')) {
+            throw new Error('borderless climate-table style missing');
+          }
+
+          const climate = html.indexOf('Record highs');
+          const forecast = html.indexOf('Point forecast');
+          const between = html.slice(climate, forecast);
+          const dividers = between.match(/border-top:1px solid #e5e7eb;/g) ?? [];
+          if (dividers.length !== 1) {
+            throw new Error(`expected one section divider between climate and forecast, found ${dividers.length}`);
+          }
+
+          console.log('table border + section divider cleanup: PASS');
+          TS
+          bun validate-table-divider.ts
+          git diff --check

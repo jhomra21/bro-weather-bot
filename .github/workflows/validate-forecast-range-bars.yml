@@ -1,0 +1,81 @@
+name: Validate forecast range bars
+
+on:
+  push:
+    branches:
+      - fix/forecast-range-bars
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run type-check
+      - name: Verify rendered forecast and climate visuals
+        shell: bash
+        run: |
+          cat > validate-forecast-ranges.ts <<'TS'
+          import { renderHtmlEmail } from "./lib/renderHtmlEmail.ts";
+
+          const sample = `
+          FXUS64 KBRO 311135 AAB
+          AFDBRO
+          Area Forecast Discussion...UPDATED
+          National Weather Service Brownsville TX
+          635 AM CDT Mon Aug 31 2026
+
+          .CLIMATE...
+          Issued at 1036 PM CDT Sun Aug 30 2026
+
+          Record High Temperatures from August 31st to September 4th:
+
+          Monday, August 31, 2026
+
+          Brownsville: 103F (2023)
+          Harlingen: 104F (1958)
+          McAllen: 104F (2023, 2017)
+
+          Tuesday, September 1, 2026
+
+          Brownsville: 100F (2023, 2020)
+          Harlingen: 103F (1928, 1952)
+          McAllen: 106F (2018)
+
+          .PRELIMINARY POINT TEMPS/POPS...
+          BROWNSVILLE 98 80 98 80 / 0 0 0 0
+          HARLINGEN 102 76 102 76 / 0 0 0 0
+          MCALLEN 104 80 104 81 / 0 0 0 0
+          RIO GRANDE CITY 105 78 105 79 / 0 0 0 0
+          SOUTH PADRE ISLAND 90 81 90 81 / 0 0 0 0
+          BAYVIEW/PORT ISABEL 96 78 96 79 / 0 0 0 0
+
+          .BRO WATCHES/WARNINGS/ADVISORIES...
+          TX...None.
+          `;
+
+          const html = renderHtmlEmail(sample);
+          const required = [
+            "<th style=\"padding:7px 10px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-weight:700;white-space:nowrap;text-align:right;\">Monday, August 31, 2026</th>",
+            "MCALLEN",
+            "Mon Aug 31",
+            "Low 80°",
+            "High <strong style=\"color:#111111;\">104°</strong>",
+            "Rain: day 0% · night 0%",
+            "Record 104F (2023, 2017)",
+            "record tie",
+            "background:#475569",
+            "SOUTH PADRE ISLAND",
+          ];
+          for (const needle of required) {
+            if (!html.includes(needle)) throw new Error(`Missing expected output: ${needle}`);
+          }
+          if (html.includes('colspan="4">Temps')) throw new Error("Old Temps/PoPs grid is still rendered");
+          if (html.includes("→")) throw new Error("Unlabeled forecast arrow is still rendered");
+          console.log("forecast range bar rendering: PASS");
+          TS
+          bun validate-forecast-ranges.ts

@@ -159,7 +159,7 @@ try {
   assert(preflightResponse.ok, "preflight GET /check failed");
   const preflightBody = (await preflightResponse.json()) as any;
   assert(
-    preflightBody.bulletin?.changedSinceLastDelivery === false,
+    preflightBody.bulletin?.changedSinceLastRun === false,
     `fixture did not establish unchanged global state: ${JSON.stringify(preflightBody.bulletin)}`,
   );
   assert(
@@ -176,7 +176,7 @@ try {
 
   const deliveryBody = (await deliveryResponse.json()) as any;
   assert(
-    deliveryBody.bulletin?.changedSinceLastDelivery === false,
+    deliveryBody.bulletin?.changedSinceLastRun === false,
     "POST /check did not reproduce an unchanged global bulletin",
   );
   assert(

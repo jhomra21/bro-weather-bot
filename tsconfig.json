@@ -28,5 +28,6 @@
 
     // Types
     "types": ["./worker-configuration.d.ts"]
-  }
+  },
+  "include": ["index.ts", "lib/**/*.ts"]
 }

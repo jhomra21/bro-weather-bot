@@ -29,7 +29,7 @@ export type Bulletin = {
   sourceUrl: string;
   upstreamStatus: number;
   changedSinceLastDelivery: boolean;
-  text?: string;
+  text: string;
 };
 
 export type InspectResult =
@@ -176,15 +176,6 @@ async function loadLatest(env: Env): Promise<LoadedBulletin> {
   }
 }
 
-function publicBulletin(
-  bulletin: LoadedBulletin & { status: "ok" } extends never ? never : Bulletin & { text: string },
-  includeText: boolean,
-): Bulletin {
-  if (includeText) return bulletin;
-  const { text: _text, ...rest } = bulletin;
-  return rest;
-}
-
 async function ensureDefaultSubscriber(
   env: Env,
   currentHash: string,
@@ -261,22 +252,19 @@ function logDelivery(value: DeliveryStatus, error?: string) {
   }
 }
 
-export async function inspect(
-  env: Env,
-  options: { includeText?: boolean } = {},
-): Promise<InspectResult> {
+export async function inspect(env: Env): Promise<InspectResult> {
   const loaded = await loadLatest(env);
   if (loaded.status === "error") return loaded;
 
   return {
     status: "ok",
-    bulletin: publicBulletin(loaded.bulletin, options.includeText ?? false),
+    bulletin: loaded.bulletin,
   };
 }
 
 export async function deliver(
   env: Env,
-  options: { includeText?: boolean; baseUrlOverride?: string } = {},
+  options: { baseUrlOverride?: string } = {},
 ): Promise<DeliveryResult> {
   const startedAt = nowIso();
   const loaded = await loadLatest(env);
@@ -478,7 +466,7 @@ export async function deliver(
 
   const result = {
     status: status === "ok" ? "ok" : "partial",
-    bulletin: publicBulletin(bulletin, options.includeText ?? false),
+    bulletin,
     delivery,
   } as const;
 

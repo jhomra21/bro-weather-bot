@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { html } from "hono/html";
-import { WorkerMailer } from "worker-mailer";
 import * as Afdbro from "./lib/afdbro.ts";
 import { renderHtmlEmail } from "./lib/renderHtmlEmail.ts";
 import { sha256Hex } from "./lib/utils.ts";
@@ -208,6 +207,7 @@ app.post("/email", async (c) => {
           const port = Number(envAny.SMTP_PORT);
           const secure = envAny.SMTP_SECURE === "true" || port === 465;
           const startTls = envAny.SMTP_STARTTLS === undefined ? true : envAny.SMTP_STARTTLS === "true";
+          const { WorkerMailer } = await import("worker-mailer");
           const mailer = await WorkerMailer.connect({
             host: envAny.SMTP_HOST,
             port,

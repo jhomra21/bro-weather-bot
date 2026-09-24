@@ -7,7 +7,9 @@
     "start": "wrangler dev --x-remote-bindings",
     "dev": "wrangler dev --x-remote-bindings",
     "generate-types": "wrangler types",
-    "type-check": "generate-types && tsc"
+    "type-check": "bun run generate-types && tsc",
+    "e2e": "bun scripts/e2e-notification-state.ts",
+    "check": "bun run type-check && bun run e2e"
   },
   "devDependencies": {
     "@types/bun": "latest"

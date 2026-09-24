@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { html } from "hono/html";
 import { WorkerMailer } from "worker-mailer";
-import { checkAfdbro } from "./lib/checkAfdbro.ts";
+import * as Afdbro from "./lib/afdbro.ts";
 import { renderHtmlEmail } from "./lib/renderHtmlEmail.ts";
-import { sanitizeAfosText, sha256Hex } from "./lib/utils.ts";
+import { sha256Hex } from "./lib/utils.ts";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -56,6 +56,7 @@ function renderEmailFormPage() {
             <div>
               <a href="/">/</a> ·
               <a href="/check">/check</a> ·
+              <a href="/status">/status</a> ·
               <a href="/check/raw">/check/raw</a> ·
               <a href="/check/html">/check/html</a>
             </div>
@@ -119,38 +120,39 @@ app.get("/", async (c) => {
 });
 
 app.get("/check", async (c) => {
-  const origin = new URL(c.req.url).origin;
-  const result = await checkAfdbro(c.env, { includeText: true, baseUrlOverride: origin });
+  const result = await Afdbro.inspect(c.env);
   return c.json(result);
 });
 
+app.get("/status", async (c) => {
+  return c.json(await Afdbro.status(c.env));
+});
+
 app.get("/check/raw", async (c) => {
-  const origin = new URL(c.req.url).origin;
-  const result = await checkAfdbro(c.env, { includeText: true, baseUrlOverride: origin });
-  if (result.error) {
+  const result = await Afdbro.inspect(c.env);
+  if (result.status === "error") {
     const status = result.upstreamStatus ?? 502;
     return new Response(`Error: ${result.error}`, {
       status,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-  return new Response(result.text ?? "", {
+  return new Response(result.bulletin.text, {
     status: 200,
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
 });
 
 app.get("/check/html", async (c) => {
-  const origin = new URL(c.req.url).origin;
-  const result = await checkAfdbro(c.env, { includeText: true, baseUrlOverride: origin });
-  if (result.error || !result.text) {
+  const result = await Afdbro.inspect(c.env);
+  if (result.status === "error") {
     const status = result.upstreamStatus ?? 502;
-    return new Response(`Error: ${result.error ?? "No text"}`, {
+    return new Response(`Error: ${result.error}`, {
       status,
       headers: { "content-type": "text/plain; charset=utf-8" },
     });
   }
-  return new Response(renderHtmlEmail(result.text), {
+  return new Response(renderHtmlEmail(result.bulletin.text), {
     status: 200,
     headers: { "content-type": "text/html; charset=utf-8" },
   });
@@ -164,12 +166,14 @@ app.post("/email", async (c) => {
     if (!to || !to.includes("@") || to.length > 254) {
       return c.json({ ok: false, error: "Invalid email" }, { status: 400 });
     }
-    const url = "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py?pil=AFDBRO&fmt=text&limit=1";
-    const res = await fetch(url, { headers: { "User-Agent": "bro-weather-bot (+Cloudflare Worker)" } });
-    if (!res.ok) return c.json({ ok: false, error: `Upstream responded ${res.status}` }, { status: 502 });
-    const text = (await res.text())?.trim() ?? "";
-    if (!text) return c.json({ ok: false, error: "Empty response from upstream" }, { status: 502 });
-    const clean = sanitizeAfosText(text);
+    const latest = await Afdbro.inspect(c.env);
+    if (latest.status === "error") {
+      return c.json(
+        { ok: false, error: latest.error },
+        { status: latest.upstreamStatus ?? 502 },
+      );
+    }
+    const clean = latest.bulletin.text;
     const subject = "New AFDBRO (Brownsville) bulletin";
     const origin = new URL(c.req.url).origin;
     // If this recipient is an existing subscriber, include an unsubscribe link
@@ -348,7 +352,7 @@ app.get("/unsubscribe", async (c) => {
 
 app.post("/check", async (c) => {
   const origin = new URL(c.req.url).origin;
-  const result = await checkAfdbro(c.env, { includeText: true, baseUrlOverride: origin });
+  const result = await Afdbro.deliver(c.env, { baseUrlOverride: origin });
   return c.json(result);
 });
 
@@ -360,6 +364,6 @@ export default {
     env: Env,
     ctx: ExecutionContext
   ) => {
-    ctx.waitUntil(checkAfdbro(env, { send: true }));
+    ctx.waitUntil(Afdbro.deliver(env));
   },
 };

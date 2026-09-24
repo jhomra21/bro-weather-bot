@@ -1,7 +1,7 @@
 import { renderHtmlEmail } from "./renderHtmlEmail.ts";
 import { sanitizeAfosText, sha256Hex } from "./utils.ts";
 
-export const sourceUrl =
+const sourceUrl =
   "https://mesonet.agron.iastate.edu/cgi-bin/afos/retrieve.py?pil=AFDBRO&fmt=text&limit=1";
 
 const LAST_BULLETIN_KEY = "AFDBRO:last";
@@ -23,15 +23,15 @@ type LastBulletin = {
   seenAt: string;
 };
 
-export type Bulletin = {
+type Bulletin = {
   hash: string;
   sourceUrl: string;
   upstreamStatus: number;
-  changedSinceLastDelivery: boolean;
+  changedSinceLastRun: boolean;
   text: string;
 };
 
-export type InspectResult =
+type InspectResult =
   | {
       status: "ok";
       bulletin: Bulletin;
@@ -43,29 +43,29 @@ export type InspectResult =
       upstreamStatus?: number;
     };
 
-export type DeliveryIssue =
+type DeliveryIssue =
   | "smtp_not_configured"
   | "smtp_connect_failed"
   | "smtp_send_failed"
   | "subscriber_iteration_failed"
   | "upstream_fetch_failed";
 
-export type DeliveryStatus = {
+type DeliveryStatus = {
   status: "ok" | "partial" | "error";
   startedAt: string;
   completedAt: string;
   durationMs: number;
   hash?: string;
-  changedSinceLastDelivery?: boolean;
+  changedSinceLastRun?: boolean;
   attempted: number;
   sent: number;
   upToDate: number;
   issues: DeliveryIssue[];
 };
 
-export type DeliveryResult =
+type DeliveryResult =
   | {
-      status: "ok" | "partial";
+      status: "ok" | "partial" | "error";
       bulletin: Bulletin;
       delivery: DeliveryStatus;
     }
@@ -77,7 +77,7 @@ export type DeliveryResult =
       delivery: DeliveryStatus;
     };
 
-export type StatusResult = {
+type StatusResult = {
   lastBulletin: LastBulletin | null;
   lastDelivery: DeliveryStatus | null;
 };
@@ -167,7 +167,7 @@ async function loadLatest(env: Env): Promise<LoadedBulletin> {
         text: clean,
         sourceUrl,
         upstreamStatus: response.status,
-        changedSinceLastDelivery: last?.hash !== hash,
+        changedSinceLastRun: last?.hash !== hash,
       },
     };
   } catch (error: any) {
@@ -462,7 +462,7 @@ export async function deliver(
     completedAt,
     durationMs: elapsedMs(startedAt, completedAt),
     hash: bulletin.hash,
-    changedSinceLastDelivery: bulletin.changedSinceLastDelivery,
+    changedSinceLastRun: bulletin.changedSinceLastRun,
     attempted,
     sent,
     upToDate,
@@ -476,19 +476,11 @@ export async function deliver(
   await writeDeliveryStatus(env, delivery);
   logDelivery(delivery);
 
-  const result = {
-    status: status === "ok" ? "ok" : "partial",
+  return {
+    status,
     bulletin,
     delivery,
-  } as const;
-
-  if (status === "error") {
-    return {
-      ...result,
-      status: "partial",
-    };
-  }
-  return result;
+  };
 }
 
 export async function status(env: Env): Promise<StatusResult> {

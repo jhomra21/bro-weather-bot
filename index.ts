@@ -168,10 +168,7 @@ app.post("/email", async (c) => {
     }
     const latest = await Afdbro.inspect(c.env);
     if (latest.status === "error") {
-      return c.json(
-        { ok: false, error: latest.error },
-        { status: latest.upstreamStatus ?? 502 },
-      );
+      return c.json({ ok: false, error: latest.error }, 502);
     }
     const clean = latest.bulletin.text;
     const subject = "New AFDBRO (Brownsville) bulletin";

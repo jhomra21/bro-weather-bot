@@ -1,4 +1,3 @@
-import { WorkerMailer } from "worker-mailer";
 import { renderHtmlEmail } from "./renderHtmlEmail.ts";
 import { sanitizeAfosText, sha256Hex } from "./utils.ts";
 
@@ -82,6 +81,10 @@ export type StatusResult = {
   lastBulletin: LastBulletin | null;
   lastDelivery: DeliveryStatus | null;
 };
+
+type Mailer = Awaited<
+  ReturnType<(typeof import("worker-mailer"))["WorkerMailer"]["connect"]>
+>;
 
 type LoadedBulletin =
   | {
@@ -291,15 +294,25 @@ export async function deliver(
 
   const envAny = env as any;
   const issues: DeliveryIssue[] = [];
-  let mailer: Awaited<ReturnType<typeof WorkerMailer.connect>> | null = null;
+  let mailer: Mailer | null | undefined;
 
-  if (
-    envAny.SMTP_HOST &&
-    envAny.SMTP_PORT &&
-    envAny.SMTP_USERNAME &&
-    envAny.SMTP_PASSWORD
-  ) {
+  async function getMailer(): Promise<Mailer | null> {
+    if (mailer !== undefined) return mailer;
+
+    if (
+      !env.SENDER ||
+      !envAny.SMTP_HOST ||
+      !envAny.SMTP_PORT ||
+      !envAny.SMTP_USERNAME ||
+      !envAny.SMTP_PASSWORD
+    ) {
+      issues.push("smtp_not_configured");
+      mailer = null;
+      return null;
+    }
+
     try {
+      const { WorkerMailer } = await import("worker-mailer");
       const port = Number(envAny.SMTP_PORT);
       const secure = envAny.SMTP_SECURE === "true" || port === 465;
       const startTls =
@@ -318,17 +331,18 @@ export async function deliver(
           password: envAny.SMTP_PASSWORD,
         },
       });
+      return mailer;
     } catch (error: any) {
       issues.push("smtp_connect_failed");
+      mailer = null;
       console.error(
         JSON.stringify({
           event: "afdbro.smtp.connect_failed",
           error: String(error?.message ?? error),
         }),
       );
+      return null;
     }
-  } else {
-    issues.push("smtp_not_configured");
   }
 
   const baseUrl = (
@@ -371,10 +385,8 @@ export async function deliver(
 
           attempted++;
 
-          if (!env.SENDER || !mailer) {
-            if (!env.SENDER) issues.push("smtp_not_configured");
-            continue;
-          }
+          const activeMailer = await getMailer();
+          if (!activeMailer || !env.SENDER) continue;
 
           if (!subscriber.unsubToken) {
             subscriber.unsubToken = createUnsubscribeToken();
@@ -398,7 +410,7 @@ export async function deliver(
           );
 
           try {
-            await mailer.send({
+            await activeMailer.send({
               from: env.SENDER,
               to: email,
               subject: "New AFDBRO (Brownsville) bulletin",

@@ -76,7 +76,7 @@ Each delivery run writes `AFDBRO:delivery:last` with:
   "completedAt": "2026-09-24T12:00:01.000Z",
   "durationMs": 1000,
   "hash": "abc123...",
-  "changedSinceLastDelivery": true,
+  "changedSinceLastRun": true,
   "attempted": 1,
   "sent": 1,
   "upToDate": 0,

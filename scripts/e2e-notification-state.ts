@@ -113,6 +113,17 @@ try {
     return realFetch(input, init);
   };
 
+  const replayWritesBefore = kv.writes.length;
+  const replayResponse = await request("/check", env);
+  assert(replayResponse.ok, "replayed GET /check failed");
+  const replayBody = (await replayResponse.json()) as any;
+  assert(replayBody.status === "ok", "replayed GET /check did not return status=ok");
+  currentHash = replayBody.bulletin.hash;
+  assert(
+    kv.writes.length === replayWritesBefore,
+    "replayed GET /check mutated KV",
+  );
+
   for (const path of ["/check/raw", "/check/html", "/status"]) {
     const before = kv.writes.length;
     const response = await request(path, env);
@@ -141,6 +152,19 @@ try {
       disabled: false,
       unsubToken: "u_e2e",
     }),
+  );
+
+  const preflightWritesBefore = kv.writes.length;
+  const preflightResponse = await request("/check", env);
+  assert(preflightResponse.ok, "preflight GET /check failed");
+  const preflightBody = (await preflightResponse.json()) as any;
+  assert(
+    preflightBody.bulletin?.changedSinceLastDelivery === false,
+    `fixture did not establish unchanged global state: ${JSON.stringify(preflightBody.bulletin)}`,
+  );
+  assert(
+    kv.writes.length === preflightWritesBefore,
+    "preflight GET /check mutated KV",
   );
 
   const writesBeforeDelivery = kv.writes.length;
